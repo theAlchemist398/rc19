@@ -28,6 +28,7 @@ from tensorflow.python.keras.callbacks import TensorBoard
 batch_size = 20 #before was 10
 gamma = 0.999
 
+rate = 0
 eps_start = 1
 eps_end = 0.01
 eps_decay = 0.001
@@ -41,6 +42,11 @@ num_episodes = 6040       # number of users = 6040
 svd_vector_dim = 300       ## vector dim for svd
 state_stack_size = 4       ## this is the no. of consecutive movie vectors used for state 
 output_dim = 2314           ## max number of movies a user has watched
+
+hl1 = 512
+hl2 = 1024
+hl3 = 512
+
 
 movies_watched = dict()
 
@@ -165,11 +171,13 @@ def create_hash(items):
 
 def DQN(input_dim, output_dim, action=None):
     ## creates the DQN model, needs paramater tuning
+    lstm_out = 100
 
     model = Sequential()
-    model.add(Dense(512, input_dim=input_dim, activation='relu'))
-    model.add(Dense(1024, activation='relu'))
-    model.add(Dense(512, activation='tanh'))
+    model.add(LSTM(lstm_out, input_dim=input_dim, dropout_U = 0.2, dropout_W = 0.2))
+    model.add(Dense(hl1, activation='relu'))
+    model.add(Dense(hl2, activation='relu'))
+    model.add(Dense(hl3, activation='tanh'))
     model.add(Dense(output_dim, activation='softmax'))
 
     model.compile(loss='mse', optimizer='adam')
@@ -195,9 +203,10 @@ def get_initial_state(items):
     return state
 
 def select_action(state, policy_net, items, timestep):
+    global rate
     
     #this needs to be changed; decay needs to be added in!!!
-    rate = eps_end + (eps_start - eps_end) * (math.exp(-1 * timestep * eps_decay))
+    rate = eps_start
 
     if random.random() > rate:
         #get action from q table/network
@@ -253,6 +262,7 @@ def get_state(state, action, items, vectors):
 def main():
     add_arguments()
 
+    outfile_path = str(hl1)+"_"+str(hl2)+"_"+str(hl3)+"_"+str(num_episodes)
     path = 'data/'
     data_m, data_r = preproc(path)
     vectors = create_tfidf_svd(data_m['title_genre'], svd_vector_dim) 
@@ -321,22 +331,22 @@ def main():
 
                 policy_net.fit(X, y, verbose=0)
 
-                with open("out_files/policy_net.pickle", "wb") as f:
+                with open("out_files/policy_net/" + outfile_path + ".pickle", "wb") as f:
                     pickle.dump(policy_net, f)
             
 
             state = next_state
 
+        rate = eps_end + (eps_start - eps_end) * (math.exp(-1 * timestep * eps_decay))
+
         if count%50 == 0:
             target_net.fit(X, y, verbose=0)# callbacks=[tensorboard])
 
-            with open("out_files/target_net.pickle", "wb") as f:
+            with open("out_files/target_net/" + outfile_path + ".pickle", "wb") as f:
                 pickle.dump(target_net, f)
             #target_net.save('out_files/target_net.h5')
 
         print(total_reward)
-
-
 
 
     # s = []
@@ -360,4 +370,7 @@ def main():
 
 
 if __name__ == '__main__':
+    start_time = time()
     main()
+    end_time = time()
+    print(end_time - start_time)
